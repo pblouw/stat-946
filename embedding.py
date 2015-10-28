@@ -2,7 +2,9 @@ import operator
 import string
 import nltk
 import numpy as np
-from utils import docstream 
+import collections
+import multiprocessing
+from utils import docstream, countwords
 
 class EmbeddingModel(object):
     """
@@ -10,7 +12,11 @@ class EmbeddingModel(object):
     """        
     stopwords = nltk.corpus.stopwords.words('english')
     tokenizer = nltk.load('tokenizers/punkt/english.pickle')
-    min_len = 4
+    min_len = 4 # minimum sentence length
+
+    @staticmethod
+    def softmax(z):
+        return np.exp(z) / np.sum(np.exp(z), axis=0)
 
     def get_sents(self, doc):
         sen_list = self.tokenizer.tokenize(doc)
@@ -29,7 +35,7 @@ class EmbeddingModel(object):
                 context.append(sen[pos+i+1])
             if pos-i-1 >= 0:
                 context.append(sen[pos-i-1])
-        return context
+        return list(set(context))
     
     def get_binvec(self, context):
         binvec = np.zeros(len(self.vocab))
@@ -63,27 +69,30 @@ class EmbeddingModel(object):
         for word in top_words[:5]:
             print word[0], word[1]
 
-    def batch_generator(self, size):
+    def data(self, size, model):
         counter = 0 
         for doclist in docstream():
             for doc in doclist:
-                if counter > size:
+                if counter >= size:
                     raise StopIteration()
                 counter += 1
                 sen_list = self.get_sents(doc)
                 for sen in sen_list:
                     sen = [w for w in sen if w not in self.stopwords]
-                    if len(sen) == 0:
+                    if len(sen) < 4:
                         continue
                     xs = np.zeros((len(self.vocab),len(sen)))
                     ys = np.zeros((len(self.vocab),len(sen)))
-                    for _ in range(len(sen)):
-                        context = self.get_context(_,sen)
-                        xs[:,_] = self.get_binvec(context)
-                        ys[:,_] = self.get_onehot(sen[_])
-                    yield xs, ys
-
-    @staticmethod
-    def softmax(z):
-        return np.exp(z) / np.sum(np.exp(z), axis=0)
+                    if model == 'cbow':
+                        for _ in range(len(sen)):
+                            context = self.get_context(_,sen)
+                            xs[:,_] = self.get_binvec(context)
+                            ys[:,_] = self.get_onehot(sen[_])
+                        yield xs, ys
+                    elif model == 'skipgram':
+                        for _ in range(len(sen)):
+                            context = self.get_context(_,sen)
+                            xs[:,_] = self.get_onehot(sen[_])
+                            ys[:,_] = self.get_binvec(context)
+                        yield xs, ys
             
