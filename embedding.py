@@ -18,6 +18,10 @@ class EmbeddingModel(object):
     def softmax(z):
         return np.exp(z) / np.sum(np.exp(z), axis=0)
 
+    @staticmethod
+    def sigmoid(z):
+        return 1.0/(1+np.exp(-z))
+
     def get_sents(self, doc):
         sen_list = self.tokenizer.tokenize(doc)
         sen_list = [s.replace('\n', ' ') for s in sen_list]
@@ -95,4 +99,29 @@ class EmbeddingModel(object):
                             xs[:,_] = self.get_onehot(sen[_])
                             ys[:,_] = self.get_binvec(context)
                         yield xs, ys
+
+    def ns_data(self, size, model):
+        counter = 0 
+        for doclist in docstream():
+            for doc in doclist:
+                if counter >= size:
+                    raise StopIteration()
+                counter += 1
+                sen_list = self.get_sents(doc)
+                for sen in sen_list:
+                    sen = [w for w in sen if w not in self.stopwords]
+                    if len(sen) < 4:
+                        continue
+                    if model == 'cbow':
+                        for _ in range(len(sen)):
+                            context = self.get_context(_,sen)
+                            x = self.get_binvec(context)
+                            y = self.get_onehot(sen[_])
+                            yield x, y
+                    elif model == 'skipgram':
+                        for _ in range(len(sen)):
+                            context = self.get_context(_,sen)
+                            x = self.get_onehot(sen[_])
+                            y = self.get_binvec(context)
+                            yield x, y
             
